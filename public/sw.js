@@ -1,116 +1,117 @@
-const CACHE_NAME = "openscreen-app-v2";
-const API_CACHE_NAME = "openscreen-api-v2";
+const CACHE_NAME = "openscreen-shell-v3";
+const API_CACHE_NAME = "openscreen-api-v3";
 
-// Static assets to precache on install
 const PRECACHE_ASSETS = [
   "/",
   "/index.html",
-  "/pwa-icon.svg",
-  "/manifest.json"
+  "/manifest.json",
+  "/pwa-icon.svg"
 ];
 
-// Install Event: Precache App Shell
+// 1. Install Event: Force immediate caching of app shell & activate immediately
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
       try {
         await cache.addAll(PRECACHE_ASSETS);
       } catch (err) {
-        console.warn("SW precache error:", err);
+        console.warn("Precache failed:", err);
       }
     })
   );
   self.skipWaiting();
 });
 
-// Activate Event: Clean up old caches & claim clients immediately
+// 2. Activate Event: Clean up old caches and take control of all open pages immediately
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then((keys) => {
       return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME && name !== API_CACHE_NAME)
-          .map((name) => caches.delete(name))
+        keys
+          .filter((key) => key !== CACHE_NAME && key !== API_CACHE_NAME)
+          .map((key) => caches.delete(key))
       );
     })
   );
   self.clients.claim();
 });
 
-// Fetch Event: Offline & Domain Downtime Resilience
+// 3. Fetch Event: Absolute resilience on Refresh & Offline
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Only intercept GET requests
+  // Only handle GET requests
   if (request.method !== "GET") return;
 
-  // 1. Navigation Requests (App Shell - index.html)
+  // A. SPA Navigation Requests (e.g. Refresh on /, /search, /watchlist, /anime/123)
   if (request.mode === "navigate") {
     event.respondWith(
       (async () => {
+        // Look up cached App Shell first
+        const cachedShell =
+          (await caches.match("/index.html")) ||
+          (await caches.match("/")) ||
+          (await caches.match(request));
+
         try {
-          // Attempt network fetch
           const networkResponse = await fetch(request);
-          // If server returns success (200-299), cache and return it
+          // If server returns valid response, update cache and return
           if (networkResponse && networkResponse.status >= 200 && networkResponse.status < 400) {
             const cache = await caches.open(CACHE_NAME);
-            cache.put(request, networkResponse.clone());
+            cache.put("/index.html", networkResponse.clone());
+            cache.put("/", networkResponse.clone());
             return networkResponse;
           }
-          // If domain is down (500, 502, 503, 504), fallback to cached index.html
-          const cachedAppShell = await caches.match("/index.html");
-          if (cachedAppShell) return cachedAppShell;
+          // Server returned error (500, 502, 503, 404, Cloudflare down) -> serve cached App Shell!
+          if (cachedShell) return cachedShell;
           return networkResponse;
         } catch (error) {
-          // Domain down or offline -> return cached App Shell
-          const cachedAppShell = await caches.match("/index.html") || await caches.match("/");
-          if (cachedAppShell) return cachedAppShell;
-          return new Response("Offline - openScreen is operating offline.", {
-            status: 200,
-            headers: { "Content-Type": "text/html" },
-          });
+          // Domain down / Network offline / DNS error -> ALWAYS return cached App Shell!
+          if (cachedShell) return cachedShell;
+
+          // Safe fallback HTML if cache was cleared
+          return new Response(
+            `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>openScreen</title><style>body{background:#09090b;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}</style></head><body><div><h2 style="color:#8b5cf6">openScreen</h2><p>App loaded in offline mode.</p><button onclick="location.reload()" style="background:#8b5cf6;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">Refresh</button></div></body></html>`,
+            { status: 200, headers: { "Content-Type": "text/html" } }
+          );
         }
       })()
     );
     return;
   }
 
-  // 2. Same-Origin Static Assets (JS, CSS, Images, Fonts)
+  // B. Same-Origin Assets (JS, CSS, Icons, Fonts)
   if (url.origin === self.location.origin) {
-    // Ignore Vite Dev HMR
+    // Exclude Vite dev server websocket HMR requests
     if (url.pathname.includes("@vite") || url.pathname.includes("node_modules")) {
       return;
     }
 
     event.respondWith(
       (async () => {
-        // Cache-First with Network Fallback
-        const cachedResponse = await caches.match(request);
-        if (cachedResponse) {
-          // Revalidate in background if online
+        // Cache-First with Background Network Revalidation
+        const cachedAsset = await caches.match(request);
+        if (cachedAsset) {
           fetch(request)
-            .then(async (networkResponse) => {
-              if (networkResponse && networkResponse.status === 200) {
+            .then(async (netRes) => {
+              if (netRes && netRes.ok) {
                 const cache = await caches.open(CACHE_NAME);
-                cache.put(request, networkResponse);
+                cache.put(request, netRes);
               }
             })
             .catch(() => {});
-          return cachedResponse;
+          return cachedAsset;
         }
 
         try {
-          const networkResponse = await fetch(request);
-          if (networkResponse && networkResponse.status === 200) {
+          const netRes = await fetch(request);
+          if (netRes && netRes.ok) {
             const cache = await caches.open(CACHE_NAME);
-            cache.put(request, networkResponse.clone());
+            cache.put(request, netRes.clone());
           }
-          return networkResponse;
+          return netRes;
         } catch (err) {
-          // Fallback to index.html if asset fetch fails during navigation
-          const fallback = await caches.match("/index.html");
-          if (fallback) return fallback;
           return new Response("", { status: 404 });
         }
       })()
@@ -118,24 +119,21 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 3. External API Requests (Caching media/anime/movie API responses for offline resilience)
+  // C. External Public API Requests (AniList, TMDB, Consumet)
   if (url.protocol.startsWith("http")) {
     event.respondWith(
       (async () => {
         try {
-          const networkResponse = await fetch(request);
-          if (networkResponse && networkResponse.status === 200) {
+          const netRes = await fetch(request);
+          if (netRes && netRes.ok) {
             const cache = await caches.open(API_CACHE_NAME);
-            cache.put(request, networkResponse.clone());
+            cache.put(request, netRes.clone());
           }
-          return networkResponse;
+          return netRes;
         } catch (err) {
-          // API down or network offline -> Serve cached API data if available
-          const cachedApiResponse = await caches.match(request);
-          if (cachedApiResponse) {
-            return cachedApiResponse;
-          }
-          // Return clean JSON error payload so app code handles it smoothly without crashing
+          // Serve cached API response when offline or API down
+          const cachedApi = await caches.match(request);
+          if (cachedApi) return cachedApi;
           return new Response(JSON.stringify({ error: "Offline mode", data: [] }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
