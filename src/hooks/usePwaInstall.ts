@@ -5,8 +5,20 @@ export interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 }
 
+// Module-level global variable to catch event if fired before React mounts
+let globalDeferredPrompt: BeforeInstallPromptEvent | null = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    globalDeferredPrompt = e as BeforeInstallPromptEvent;
+  });
+}
+
 export function usePwaInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(
+    globalDeferredPrompt
+  );
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
@@ -19,13 +31,19 @@ export function usePwaInstall() {
       setIsInstalled(true);
     }
 
+    if (globalDeferredPrompt) {
+      setDeferredPrompt(globalDeferredPrompt);
+    }
+
     function handleBeforeInstallPrompt(e: Event) {
       e.preventDefault();
+      globalDeferredPrompt = e as BeforeInstallPromptEvent;
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     }
 
     function handleAppInstalled() {
       setIsInstalled(true);
+      globalDeferredPrompt = null;
       setDeferredPrompt(null);
     }
 
@@ -39,13 +57,15 @@ export function usePwaInstall() {
   }, []);
 
   const installPwa = async () => {
-    if (!deferredPrompt) return;
+    const promptEvent = deferredPrompt || globalDeferredPrompt;
+    if (!promptEvent) return;
     try {
-      await deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
+      await promptEvent.prompt();
+      const choiceResult = await promptEvent.userChoice;
       if (choiceResult.outcome === "accepted") {
         setIsInstalled(true);
       }
+      globalDeferredPrompt = null;
       setDeferredPrompt(null);
     } catch (err) {
       console.error("PWA install error:", err);
@@ -53,7 +73,7 @@ export function usePwaInstall() {
   };
 
   return {
-    canInstall: !!deferredPrompt && !isInstalled,
+    canInstall: (!!deferredPrompt || !!globalDeferredPrompt) && !isInstalled,
     isInstalled,
     installPwa,
   };
