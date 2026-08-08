@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { LayoutGrid, Search, X, Loader2, ChevronDown, Check } from "lucide-react";
+import { LayoutGrid, Search, X, Loader2, ChevronDown, Check, Download } from "lucide-react";
 import { useNavigate, useLocation, useSearchParams } from "react-router";
 import { useMediaType, MediaType } from "../../context/MediaTypeContext";
+import { usePwaInstall } from "../../hooks/usePwaInstall";
 import { cn } from "../../utils/cn";
 
 const MEDIA_TYPE_PLACEHOLDERS: Record<MediaType, string> = {
@@ -15,6 +16,7 @@ export default function TopBar() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeMediaType, setActiveMediaType } = useMediaType();
+  const { canInstall, installPwa } = usePwaInstall();
 
   const urlQuery = searchParams.get("q") || "";
   const [query, setQuery] = useState(urlQuery);
@@ -87,14 +89,14 @@ export default function TopBar() {
   const placeholderText = `Search ${MEDIA_TYPE_PLACEHOLDERS[activeMediaType]}...`;
 
   return (
-    <header className="h-16 shrink-0 sticky top-0 z-40 bg-[#09090b]/90 backdrop-blur-xl border-b border-white/5 px-4 sm:px-8 flex items-center justify-between gap-4 select-none">
+    <header className="h-16 shrink-0 sticky top-0 z-40 bg-[#09090b]/90 backdrop-blur-xl border-b border-white/5 px-3 sm:px-8 flex items-center justify-between gap-2.5 sm:gap-4 select-none">
       {/* Top Navigation Tabs: Anime, Movies, TV Series + Gateway Switcher */}
       <nav className="flex items-center gap-1 sm:gap-2 shrink-0 relative">
         {/* Category Switcher Button (Opens dropdown on mobile, Link on desktop) */}
         <button
           ref={buttonRef}
           onClick={() => setIsDropdownOpen((prev) => !prev)}
-          className="h-9 px-3 rounded-xl text-muted-foreground hover:text-white hover:bg-[#27272a] hover:border-white/20 transition-all cursor-pointer flex items-center gap-1.5 border border-white/10 bg-[#18181b] md:bg-transparent md:border-none md:p-2 md:h-auto"
+          className="h-9 px-2.5 sm:px-3 rounded-xl text-muted-foreground hover:text-white hover:bg-[#27272a] hover:border-white/20 transition-all cursor-pointer flex items-center gap-1.5 border border-white/10 bg-[#18181b] md:bg-transparent md:border-none md:p-2 md:h-auto"
           title="Switch Category"
         >
           <LayoutGrid className="w-4 h-4 text-primary shrink-0" />
@@ -134,6 +136,20 @@ export default function TopBar() {
                 </button>
               );
             })}
+            {canInstall && (
+              <button
+                onClick={() => {
+                  installPwa();
+                  setIsDropdownOpen(false);
+                }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-extrabold text-primary bg-primary/10 hover:bg-primary/20 transition-all border-t border-white/5 mt-1 pt-1.5 cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Download className="w-3.5 h-3.5 shrink-0 text-primary" />
+                  <span>Install App</span>
+                </div>
+              </button>
+            )}
           </div>
         )}
 
@@ -173,31 +189,45 @@ export default function TopBar() {
         </div>
       </nav>
 
-      {/* Header Search Input */}
-      <div className="relative flex items-center flex-1 max-w-xs sm:max-w-sm md:max-w-md ml-auto">
-        <div className="absolute left-3 pointer-events-none text-muted-foreground">
-          <Search className="w-4 h-4" />
-        </div>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={handleInputChange}
-          onFocus={handleFocus}
-          placeholder={placeholderText}
-          className="w-full h-9 pl-9 pr-9 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/30 transition-all"
-          autoComplete="off"
-          spellCheck={false}
-        />
-        {query.length > 0 && (
+      {/* Header Actions & Search Input */}
+      <div className="flex items-center gap-2 flex-1 min-w-0 max-w-full sm:max-w-sm md:max-w-md ml-auto">
+        {canInstall && (
           <button
-            onClick={handleClear}
-            className="absolute right-2.5 p-0.5 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-all cursor-pointer"
-            aria-label="Clear search"
+            onClick={installPwa}
+            className="h-9 px-2.5 sm:px-3 rounded-xl bg-primary text-white hover:bg-primary/90 text-xs font-extrabold transition-all flex items-center gap-1.5 shadow-md shadow-primary/25 shrink-0 cursor-pointer active:scale-95 border border-primary/40"
+            title="Install openScreen PWA Application"
           >
-            <X className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Install</span>
+            <span className="sm:hidden">App</span>
           </button>
         )}
+
+        <div className="relative flex items-center flex-1 min-w-0">
+          <div className="absolute left-3 pointer-events-none text-muted-foreground">
+            <Search className="w-4 h-4" />
+          </div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={handleInputChange}
+            onFocus={handleFocus}
+            placeholder={placeholderText}
+            className="w-full h-9 pl-9 pr-8 rounded-xl bg-white/5 border border-white/10 text-xs sm:text-sm text-white placeholder:text-xs sm:placeholder:text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/30 transition-all"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {query.length > 0 && (
+            <button
+              onClick={handleClear}
+              className="absolute right-2 p-0.5 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

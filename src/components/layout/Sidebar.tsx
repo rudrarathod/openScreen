@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router";
-import { Home, Search, Compass, Bookmark, LayoutGrid } from "lucide-react";
+import { Home, Search, Compass, Bookmark, LayoutGrid, Download } from "lucide-react";
 import { cn } from "../../utils/cn";
+import { usePwaInstall } from "../../hooks/usePwaInstall";
 
 const NAV_ITEMS = [
   { name: "Home", path: "/", icon: Home },
@@ -12,6 +13,7 @@ const NAV_ITEMS = [
 
 export default function Sidebar({ className }: { className?: string }) {
   const location = useLocation();
+  const { canInstall, installPwa } = usePwaInstall();
 
   return (
     <aside
@@ -65,6 +67,19 @@ export default function Sidebar({ className }: { className?: string }) {
           })}
         </div>
       </div>
+
+      {canInstall && (
+        <div className="p-3 border-t border-white/5">
+          <button
+            onClick={installPwa}
+            className="w-full flex items-center justify-center md:justify-start gap-3.5 px-3.5 py-3 rounded-xl bg-primary/15 text-primary hover:bg-primary/25 border border-primary/30 transition-all text-sm font-bold cursor-pointer"
+            title="Install openScreen PWA App"
+          >
+            <Download className="w-5 h-5 shrink-0 text-primary" />
+            <span className="hidden lg:block md:hidden">Install App</span>
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
