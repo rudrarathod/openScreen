@@ -3,7 +3,6 @@ import { LayoutGrid, Search, X, Loader2, ChevronDown, Check, Download } from "lu
 import { useNavigate, useLocation, useSearchParams } from "react-router";
 import { useMediaType, MediaType } from "../../context/MediaTypeContext";
 import { usePwaInstall } from "../../hooks/usePwaInstall";
-import PwaInstallModal from "../ui/PwaInstallModal";
 import { cn } from "../../utils/cn";
 
 const MEDIA_TYPE_PLACEHOLDERS: Record<MediaType, string> = {
@@ -17,14 +16,7 @@ export default function TopBar() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeMediaType, setActiveMediaType } = useMediaType();
-  const {
-    canInstall,
-    installPwa,
-    triggerNativePrompt,
-    showGuideModal,
-    setShowGuideModal,
-    hasNativePrompt,
-  } = usePwaInstall();
+  const { canInstall, installPwa } = usePwaInstall();
 
   const urlQuery = searchParams.get("q") || "";
   const [query, setQuery] = useState(urlQuery);
@@ -237,13 +229,6 @@ export default function TopBar() {
           )}
         </div>
       </div>
-
-      <PwaInstallModal
-        isOpen={showGuideModal}
-        onClose={() => setShowGuideModal(false)}
-        onNativeInstall={triggerNativePrompt}
-        hasNativePrompt={hasNativePrompt}
-      />
     </header>
   );
 }
