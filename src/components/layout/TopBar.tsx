@@ -1,120 +1,204 @@
-import { Search as SearchIcon, X, Download } from "lucide-react";
-import { Link, useNavigate, useLocation, useSearchParams } from "react-router";
-import { useEffect, useState } from "react";
-import { useDebounce } from "../../hooks/useDebounce";
-import { useRecentSearches } from "../../hooks/useRecentSearches";
-import { usePWAInstall } from "../../hooks/usePWAInstall";
+import { useState, useEffect, useRef } from "react";
+import { LayoutGrid, Search, X, Loader2, ChevronDown, Check } from "lucide-react";
+import { useNavigate, useLocation, useSearchParams } from "react-router";
+import { useMediaType, MediaType } from "../../context/MediaTypeContext";
+import { cn } from "../../utils/cn";
+
+const MEDIA_TYPE_PLACEHOLDERS: Record<MediaType, string> = {
+  anime: "Anime",
+  movie: "Movies",
+  tv: "TV Series",
+};
 
 export default function TopBar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const { addSearch } = useRecentSearches();
-  const { isInstallable, promptInstall } = usePWAInstall();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { activeMediaType, setActiveMediaType } = useMediaType();
 
   const urlQuery = searchParams.get("q") || "";
-  const [input, setInput] = useState(urlQuery);
-  const debounced = useDebounce(input, 400);
+  const [query, setQuery] = useState(urlQuery);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const onSearchPage = location.pathname === "/search";
-
-  // Keep the field in sync when the URL query changes elsewhere (Search page, quick tags).
+  // Sync local input value when URL query parameter changes
   useEffect(() => {
-    setInput(urlQuery);
+    setQuery(urlQuery);
   }, [urlQuery]);
 
-  // Live search: push the debounced value into the URL, navigating to /search as needed.
+  // Close dropdown on click outside
   useEffect(() => {
-    const value = debounced.trim();
-    if (value === urlQuery) return;
-    if (value) {
-      navigate(`/search?q=${encodeURIComponent(value)}`, { replace: onSearchPage });
-    } else if (onSearchPage) {
-      navigate("/search", { replace: true });
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node)
+      ) {
+        setIsDropdownOpen(false);
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debounced]);
+    if (isDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isDropdownOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const value = input.trim();
-    if (value) {
-      addSearch(value);
-      navigate(`/search?q=${encodeURIComponent(value)}`);
+  const handleTabClick = (type: MediaType) => {
+    setActiveMediaType(type);
+    if (location.pathname !== "/" && location.pathname !== "/search") {
+      navigate("/");
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setQuery(val);
+
+    if (location.pathname !== "/search") {
+      navigate(`/search?q=${encodeURIComponent(val)}`, { replace: true });
     } else {
-      navigate("/search");
-    }
-  };
-
-  const handleClear = () => {
-    setInput("");
-    if (onSearchPage) navigate("/search", { replace: true });
-  };
-
-  const handleFocus = () => {
-    if (!onSearchPage) {
-      const value = input.trim();
-      if (value) {
-        navigate(`/search?q=${encodeURIComponent(value)}`);
+      if (val.trim()) {
+        setSearchParams({ q: val }, { replace: true });
       } else {
-        navigate("/search");
+        setSearchParams({}, { replace: true });
       }
     }
   };
 
+  const handleFocus = () => {
+    if (location.pathname !== "/search") {
+      navigate(`/search${query.trim() ? `?q=${encodeURIComponent(query)}` : ""}`);
+    }
+  };
+
+  const handleClear = () => {
+    setQuery("");
+    if (location.pathname === "/search") {
+      setSearchParams({}, { replace: true });
+    } else {
+      navigate("/search");
+    }
+    inputRef.current?.focus();
+  };
+
+  const placeholderText = `Search ${MEDIA_TYPE_PLACEHOLDERS[activeMediaType]}...`;
+
   return (
-    <header className="h-16 sm:h-20 shrink-0 sticky top-0 z-40 bg-[#0c0c0e]/95 backdrop-blur-2xl border-b border-white/10 shadow-lg shadow-black/50 px-4 sm:px-6 flex items-center justify-between gap-3 transition-all">
-      {/* Brand / Logo */}
-      <Link to="/" className="flex items-center gap-2.5 shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-md shadow-primary/20">
-          <span className="font-display font-bold text-base text-white">O</span>
-        </div>
-        <span className="font-display font-bold text-lg hidden sm:inline-block bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-          openAnime
-        </span>
-      </Link>
-
-      {/* Search Bar (Mobile & Desktop) */}
-      <div className="flex-1 flex items-center max-w-xl">
-        <form onSubmit={handleSubmit} className="relative w-full group">
-          <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
-            <SearchIcon className="w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-          </div>
-          <input
-            type="text"
-            value={input}
-            onFocus={handleFocus}
-            onClick={handleFocus}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Search anime, genres..."
-            className="w-full h-10 md:h-12 bg-secondary/30 border border-border/50 rounded-full pl-10 md:pl-12 pr-10 md:pr-12 text-sm outline-none focus:border-primary/50 focus:bg-secondary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-muted-foreground/70"
-          />
-          {input && (
-            <button
-              type="button"
-              onClick={handleClear}
-              aria-label="Clear search"
-              className="absolute inset-y-0 right-2.5 my-auto h-7 w-7 md:h-8 md:w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-            >
-              <X className="w-3.5 h-3.5 md:w-4 md:h-4" />
-            </button>
-          )}
-        </form>
-      </div>
-
-      {/* Install PWA Button */}
-      {isInstallable && (
+    <header className="h-16 shrink-0 sticky top-0 z-40 bg-[#09090b]/90 backdrop-blur-xl border-b border-white/5 px-4 sm:px-8 flex items-center justify-between gap-4 select-none">
+      {/* Top Navigation Tabs: Anime, Movies, TV Series + Gateway Switcher */}
+      <nav className="flex items-center gap-1 sm:gap-2 shrink-0 relative">
+        {/* Category Switcher Button (Opens dropdown on mobile, Link on desktop) */}
         <button
-          onClick={promptInstall}
-          className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs sm:text-sm font-semibold transition-all active:scale-95 cursor-pointer shrink-0"
-          title="Install openAnime App"
+          ref={buttonRef}
+          onClick={() => setIsDropdownOpen((prev) => !prev)}
+          className="h-9 px-3 rounded-xl text-muted-foreground hover:text-white hover:bg-[#27272a] hover:border-white/20 transition-all cursor-pointer flex items-center gap-1.5 border border-white/10 bg-[#18181b] md:bg-transparent md:border-none md:p-2 md:h-auto"
+          title="Switch Category"
         >
-          <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span className="hidden sm:inline">Install App</span>
-          <span className="sm:hidden">Install</span>
+          <LayoutGrid className="w-4 h-4 text-primary shrink-0" />
+          <span className="text-xs font-bold capitalize text-white md:hidden">
+            {MEDIA_TYPE_PLACEHOLDERS[activeMediaType]}
+          </span>
+          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground md:hidden shrink-0" />
         </button>
-      )}
+
+        {/* Dropdown Menu (Mobile Only) */}
+        {isDropdownOpen && (
+          <div
+            ref={dropdownRef}
+            className="absolute top-11 left-0 z-50 min-w-[160px] bg-[#121216] border border-white/10 rounded-xl p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 md:hidden"
+          >
+            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-white/5 mb-1">
+              Select Category
+            </div>
+            {(["anime", "movie", "tv"] as MediaType[]).map((type) => {
+              const isCurrent = activeMediaType === type;
+              return (
+                <button
+                  key={type}
+                  onClick={() => {
+                    handleTabClick(type);
+                    setIsDropdownOpen(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all mb-0.5 last:mb-0 cursor-pointer",
+                    isCurrent
+                      ? "text-primary bg-primary/10 font-extrabold"
+                      : "text-foreground hover:bg-white/10"
+                  )}
+                >
+                  <span>{MEDIA_TYPE_PLACEHOLDERS[type]}</span>
+                  {isCurrent && <Check className="w-3 h-3 text-primary shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="hidden md:flex items-center gap-1 sm:gap-2">
+          <button
+            onClick={() => handleTabClick("anime")}
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+              activeMediaType === "anime"
+                ? "text-primary bg-primary/10 font-semibold"
+                : "text-muted-foreground hover:text-white hover:bg-white/5"
+            }`}
+          >
+            Anime
+          </button>
+
+          <button
+            onClick={() => handleTabClick("movie")}
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+              activeMediaType === "movie"
+                ? "text-primary bg-primary/10 font-semibold"
+                : "text-muted-foreground hover:text-white hover:bg-white/5"
+            }`}
+          >
+            Movies
+          </button>
+
+          <button
+            onClick={() => handleTabClick("tv")}
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+              activeMediaType === "tv"
+                ? "text-primary bg-primary/10 font-semibold"
+                : "text-muted-foreground hover:text-white hover:bg-white/5"
+            }`}
+          >
+            TV Series
+          </button>
+        </div>
+      </nav>
+
+      {/* Header Search Input */}
+      <div className="relative flex items-center flex-1 max-w-xs sm:max-w-sm md:max-w-md ml-auto">
+        <div className="absolute left-3 pointer-events-none text-muted-foreground">
+          <Search className="w-4 h-4" />
+        </div>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={handleInputChange}
+          onFocus={handleFocus}
+          placeholder={placeholderText}
+          className="w-full h-9 pl-9 pr-9 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/30 transition-all"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {query.length > 0 && (
+          <button
+            onClick={handleClear}
+            className="absolute right-2.5 p-0.5 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+            aria-label="Clear search"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
     </header>
   );
 }
-

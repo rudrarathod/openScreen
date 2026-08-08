@@ -8,6 +8,38 @@ export function formatAgeRating(rating?: string): AgeRatingInfo | null {
   if (!rating || typeof rating !== "string") return null;
   const r = rating.toLowerCase().trim();
 
+  // TV Ratings
+  if (r.includes("tv-ma") || r === "tvma") {
+    return {
+      short: "TV-MA",
+      full: "Mature Audience (TV-MA)",
+      badgeClass: "bg-red-700/90 text-red-100 border-red-500/60 shadow-red-950/60",
+    };
+  }
+  if (r.includes("tv-14") || r === "tv14") {
+    return {
+      short: "TV-14",
+      full: "Parents Strongly Cautioned (TV-14)",
+      badgeClass: "bg-amber-500/80 text-amber-100 border-amber-400/50 shadow-amber-900/40",
+    };
+  }
+  if (r.includes("tv-pg") || r === "tvpg" || r.includes("tv-y7") || r === "tvy7") {
+    const isY7 = r.includes("y7");
+    return {
+      short: isY7 ? "TV-Y7" : "TV-PG",
+      full: isY7 ? "Directed to Older Children (TV-Y7)" : "Parental Guidance Suggested (TV-PG)",
+      badgeClass: "bg-blue-500/80 text-blue-100 border-blue-400/50 shadow-blue-900/40",
+    };
+  }
+  if (r.includes("tv-g") || r === "tvg" || r.includes("tv-y") || r === "tvy") {
+    const isY = r.includes("y");
+    return {
+      short: isY ? "TV-Y" : "TV-G",
+      full: isY ? "All Children (TV-Y)" : "General Audience (TV-G)",
+      badgeClass: "bg-emerald-500/80 text-emerald-100 border-emerald-400/50 shadow-emerald-900/40",
+    };
+  }
+
   if (r.includes("pg-13") || r.includes("pg_13") || r === "pg13") {
     return {
       short: "PG-13",

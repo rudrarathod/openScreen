@@ -22,6 +22,9 @@ export async function fetchSubDubInfo(malId: string | number): Promise<SubDubAva
     let maxDubEp: number | undefined = undefined;
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
       const [aniListRes, aniKotoRes] = await Promise.allSettled([
         fetch("https://graphql.anilist.co", {
           method: "POST",
@@ -46,10 +49,14 @@ export async function fetchSubDubInfo(malId: string | number): Promise<SubDubAva
             `,
             variables: { idMal: Number(malId) },
           }),
+          signal: controller.signal,
         }).then((r) => (r.ok ? r.json() : null)),
 
-        fetch(`/api/anikoto/recent-anime?per_page=100`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`/api/anikoto/recent-anime?per_page=100`, { signal: controller.signal }).then((r) =>
+          r.ok ? r.json() : null
+        ),
       ]);
+      clearTimeout(timeoutId);
 
       if (aniListRes.status === "fulfilled" && aniListRes.value?.data?.Media) {
         const media = aniListRes.value.data.Media;

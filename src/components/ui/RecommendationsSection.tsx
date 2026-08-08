@@ -2,7 +2,8 @@ import React, { useMemo } from "react";
 import { Sparkles } from "lucide-react";
 import Carousel from "./Carousel";
 import { AnimeProp } from "./AnimeCard";
-import { useWatchlist } from "../../context/WatchlistContext";
+import { useWatchlist, inferMediaType } from "../../context/WatchlistContext";
+import { useMediaType } from "../../context/MediaTypeContext";
 
 interface RecommendationsSectionProps {
   candidatePool: AnimeProp[];
@@ -10,13 +11,19 @@ interface RecommendationsSectionProps {
 
 export default function RecommendationsSection({ candidatePool }: RecommendationsSectionProps) {
   const { watchlist, isInWatchlist } = useWatchlist();
+  const { activeMediaType } = useMediaType();
 
-  // 1. Calculate genre and tag weights from watchlist items
+  // 1. Calculate genre and tag weights from watchlist items matching activeMediaType
   const { genreWeights, topGenres, totalItems } = useMemo(() => {
     const weights: Record<string, number> = {};
     let itemsCount = 0;
 
-    watchlist.forEach((item) => {
+    const filteredWatchlist = watchlist.filter((item) => {
+      const type = item.mediaType || inferMediaType(item.id, item.type);
+      return type === activeMediaType;
+    });
+
+    filteredWatchlist.forEach((item) => {
       itemsCount++;
 
       // Weight multiplier based on watchlist status
@@ -115,9 +122,11 @@ export default function RecommendationsSection({ candidatePool }: Recommendation
 
   const isPersonalized = totalItems > 0 && topGenres.length > 0;
 
+  const mediaTypeName = activeMediaType === "anime" ? "Anime" : activeMediaType === "movie" ? "Movies" : "TV Series";
+
   return (
     <Carousel
-      title="Anime You Might Like"
+      title={`${mediaTypeName} You Might Like`}
       subtitle={
         <div className="flex items-center gap-1.5 flex-wrap">
           <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse shrink-0" />
@@ -129,7 +138,7 @@ export default function RecommendationsSection({ candidatePool }: Recommendation
               </span>
             </span>
           ) : (
-            <span>Top recommendations — add anime to your watchlist for tailored picks!</span>
+            <span>Top recommendations — add {activeMediaType} to your watchlist for tailored picks!</span>
           )}
         </div>
       }

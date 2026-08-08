@@ -6,6 +6,8 @@ import { useWatchlist } from "../../context/WatchlistContext";
 import { WATCHLIST_STATUS_CONFIG, ALL_WATCHLIST_STATUSES } from "../../utils/watchlistStatus";
 import { formatAgeRating } from "../../utils/rating";
 
+import { useMediaType } from "../../context/MediaTypeContext";
+
 export interface AnimeProp {
   id: string | number;
   title: string;
@@ -13,6 +15,7 @@ export interface AnimeProp {
   image: string;
   score?: number | string;
   type?: string;
+  mediaType?: "anime" | "movie" | "tv";
   episode?: number;
   genres?: string[];
   status?: string;
@@ -26,11 +29,15 @@ interface AnimeCardProps {
 }
 
 export default function AnimeCard({ anime, layout = "portrait", className }: AnimeCardProps) {
+  const { activeMediaType } = useMediaType();
   const { isInWatchlist, addToWatchlist, removeFromWatchlist, getWatchlistItem, updateWatchlistStatus } = useWatchlist();
   const saved = isInWatchlist(anime.id);
   const watchlistItem = getWatchlistItem(anime.id);
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const effectiveMediaType = anime.mediaType || (activeMediaType === "movie" ? "movie" : activeMediaType === "tv" ? "tv" : "anime");
+  const targetPath = effectiveMediaType === "movie" ? `/movie/${anime.id}` : effectiveMediaType === "tv" ? `/tv/${anime.id}` : `/anime/${anime.id}`;
 
   // Current status config or fallback
   const currentStatus = watchlistItem?.status || "Plan to Watch";
@@ -38,7 +45,14 @@ export default function AnimeCard({ anime, layout = "portrait", className }: Ani
   const StatusIcon = statusConfig?.icon || Bookmark;
 
   // Formatted age rating badge
-  const ratingBadge = formatAgeRating(anime.rating);
+  const effectiveRating = anime.rating || (() => {
+    const genres = (anime.genres || []).map((g) => g.toLowerCase());
+    if (genres.includes("hentai") || genres.includes("erotica")) return "18+";
+    if (genres.includes("ecchi") || genres.includes("horror") || genres.includes("thriller")) return "R-17+";
+    if (genres.includes("kids")) return "PG";
+    return (anime.type || "").toUpperCase() === "MOVIE" ? "PG-13" : "TV-14";
+  })();
+  const ratingBadge = formatAgeRating(effectiveRating);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -77,7 +91,7 @@ export default function AnimeCard({ anime, layout = "portrait", className }: Ani
   if (layout === "landscape") {
     return (
       <Link 
-        to={`/anime/${anime.id}`} 
+        to={targetPath} 
         className={cn(
           "group relative flex flex-col gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background active:scale-[0.98] transition-all touch-manipulation",
           className
@@ -192,7 +206,7 @@ export default function AnimeCard({ anime, layout = "portrait", className }: Ani
 
   return (
     <Link 
-      to={`/anime/${anime.id}`} 
+      to={targetPath} 
       className={cn(
         "group relative flex flex-col gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background active:scale-[0.98] transition-all touch-manipulation",
         className

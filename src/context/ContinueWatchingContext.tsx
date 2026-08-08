@@ -39,8 +39,8 @@ interface ContinueWatchingContextType {
   getWatchedEpisodes: (animeId: string | number) => number[];
 }
 
-const STORAGE_KEY = "openAnime_continue_watching_v1";
-const WATCHED_KEY = "openAnime_watched_episodes_v1";
+const STORAGE_KEY = "openScreen_continue_watching_v1";
+const WATCHED_KEY = "openScreen_watched_episodes_v1";
 
 const ContinueWatchingContext = createContext<ContinueWatchingContextType | undefined>(undefined);
 

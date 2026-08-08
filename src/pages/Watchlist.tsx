@@ -14,13 +14,19 @@ import {
   XCircle,
   ArrowUpDown,
   Sparkles,
+  Film,
+  Tv,
+  Bookmark,
+  Check,
+  Pause,
+  X,
 } from "lucide-react";
-import { useWatchlist, WatchlistStatus, WatchlistItem } from "../context/WatchlistContext";
+import { useWatchlist, WatchlistStatus, WatchlistItem, inferMediaType } from "../context/WatchlistContext";
 import { WATCHLIST_STATUS_CONFIG } from "../utils/watchlistStatus";
 import { fetchAnimeEpisodes } from "../api/jikan";
 import { cn } from "../utils/cn";
 import CustomSelect, { CustomSelectOption } from "../components/ui/CustomSelect";
-import { Tv, Bookmark, Check, Pause, X } from "lucide-react";
+import { useMediaType } from "../context/MediaTypeContext";
 
 const TABS: { name: string; status: WatchlistStatus | "All"; icon: any }[] = [
   { name: "All", status: "All", icon: null },
@@ -55,6 +61,7 @@ const WATCHLIST_SORT_OPTIONS: CustomSelectOption<"added" | "score" | "title" | "
 ];
 
 export default function Watchlist() {
+  const { activeMediaType, setActiveMediaType } = useMediaType();
   const {
     watchlist,
     removeFromWatchlist,
@@ -67,14 +74,22 @@ export default function Watchlist() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"added" | "score" | "title" | "progress">("added");
 
-  // Sync aired episode totals for items in watchlist on mount
+  // Strict Media Type Isolation
+  const categoryWatchlist = useMemo(() => {
+    return watchlist.filter((item) => {
+      const type = item.mediaType || inferMediaType(item.id, item.type);
+      return type === activeMediaType;
+    });
+  }, [watchlist, activeMediaType]);
+
+  // Sync aired episode totals for anime items in watchlist on mount
   useEffect(() => {
-    if (watchlist.length === 0) return;
+    if (categoryWatchlist.length === 0 || activeMediaType !== "anime") return;
     let isMounted = true;
 
     async function checkAiredEpisodes() {
       // Sync active or completed items to check for new episodes
-      const itemsToCheck = watchlist.slice(0, 12);
+      const itemsToCheck = categoryWatchlist.slice(0, 12);
       for (const item of itemsToCheck) {
         if (!isMounted) break;
         try {
@@ -94,14 +109,26 @@ export default function Watchlist() {
     return () => {
       isMounted = false;
     };
-  }, [watchlist.length, syncAiredTotal]);
+  }, [categoryWatchlist.length, activeMediaType, syncAiredTotal]);
 
-  // Tab counts
+  // Tab counts based ONLY on categoryWatchlist
   const tabCounts = useMemo(() => {
-    const counts: Record<string, number> = { All: watchlist.length };
+    const counts: Record<string, number> = { All: categoryWatchlist.length };
     TABS.forEach((t) => {
       if (t.status !== "All") {
-        counts[t.status] = watchlist.filter((item) => item.status === t.status).length;
+        counts[t.status] = categoryWatchlist.filter((item) => item.status === t.status).length;
+      }
+    });
+    return counts;
+  }, [categoryWatchlist]);
+
+  // Category counts across entire watchlist
+  const categoryCounts = useMemo(() => {
+    const counts = { anime: 0, movie: 0, tv: 0 };
+    watchlist.forEach((item) => {
+      const type = item.mediaType || inferMediaType(item.id, item.type);
+      if (type in counts) {
+        counts[type as keyof typeof counts]++;
       }
     });
     return counts;
@@ -109,7 +136,7 @@ export default function Watchlist() {
 
   // Filter & Sort
   const filteredItems = useMemo(() => {
-    return watchlist
+    return categoryWatchlist
       .filter((item) => {
         const matchesTab = activeTab === "All" || item.status === activeTab;
         const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -131,50 +158,75 @@ export default function Watchlist() {
         // default "added"
         return b.addedAt - a.addedAt;
       });
-  }, [watchlist, activeTab, searchQuery, sortBy]);
+  }, [categoryWatchlist, activeTab, searchQuery, sortBy]);
 
   // Summary statistics
   const stats = useMemo(() => {
-    const total = watchlist.length;
-    const watching = watchlist.filter((i) => i.status === "Watching").length;
-    const completed = watchlist.filter((i) => i.status === "Completed").length;
-    const totalEpsWatched = watchlist.reduce((sum, i) => sum + (i.progressEp || 0), 0);
+    const total = categoryWatchlist.length;
+    const watching = categoryWatchlist.filter((i) => i.status === "Watching").length;
+    const completed = categoryWatchlist.filter((i) => i.status === "Completed").length;
+    const totalEpsWatched = categoryWatchlist.reduce((sum, i) => sum + (i.progressEp || 0), 0);
     return { total, watching, completed, totalEpsWatched };
-  }, [watchlist]);
+  }, [categoryWatchlist]);
 
   return (
     <div className="flex flex-col gap-8 px-4 sm:px-6 md:px-12 py-8 min-h-screen pb-24">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold tracking-tight">
-            My Watchlist
+
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold tracking-tight capitalize">
+            My {activeMediaType === "anime" ? "Anime" : activeMediaType === "movie" ? "Movie" : "TV Series"} Watchlist
           </h1>
           <p className="text-sm text-muted-foreground mt-1.5">
-            Track, organize, and manage your anime progress seamlessly.
+            Track, organize, and manage your saved {activeMediaType} titles seamlessly.
           </p>
         </div>
 
-        {/* Stats summary pill */}
-        <div className="grid grid-cols-2 sm:flex sm:items-center gap-3 sm:gap-4 p-3 sm:p-2.5 sm:px-4 rounded-2xl glass border border-white/10 text-xs sm:text-sm">
-          <div className="flex flex-col">
-            <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Total</span>
-            <span className="font-bold text-foreground">{stats.total}</span>
+        {/* Stats summary panel */}
+        <div className="flex items-center gap-3 overflow-x-auto pb-1.5 w-full lg:w-auto no-scrollbar scroll-smooth">
+          {/* Card: Total */}
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-secondary/35 border border-white/5 shadow-sm min-w-[115px] shrink-0 sm:min-w-0 sm:flex-initial">
+            <div className="p-1.5 rounded-lg bg-white/5 text-muted-foreground">
+              <Bookmark className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider">Total</span>
+              <span className="text-sm font-extrabold text-foreground leading-tight">{stats.total}</span>
+            </div>
           </div>
-          <div className="hidden sm:block h-6 w-px bg-border/60" />
-          <div className="flex flex-col">
-            <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Watching</span>
-            <span className="font-bold text-primary">{stats.watching}</span>
+
+          {/* Card: Watching */}
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-secondary/35 border border-white/5 shadow-sm min-w-[115px] shrink-0 sm:min-w-0 sm:flex-initial">
+            <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+              <Tv className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider">Watching</span>
+              <span className="text-sm font-extrabold text-primary leading-tight">{stats.watching}</span>
+            </div>
           </div>
-          <div className="hidden sm:block h-6 w-px bg-border/60" />
-          <div className="flex flex-col">
-            <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Completed</span>
-            <span className="font-bold text-emerald-400">{stats.completed}</span>
+
+          {/* Card: Completed */}
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-secondary/35 border border-white/5 shadow-sm min-w-[115px] shrink-0 sm:min-w-0 sm:flex-initial">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+              <Check className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider">Completed</span>
+              <span className="text-sm font-extrabold text-emerald-400 leading-tight">{stats.completed}</span>
+            </div>
           </div>
-          <div className="hidden sm:block h-6 w-px bg-border/60" />
-          <div className="flex flex-col">
-            <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Eps Watched</span>
-            <span className="font-bold text-amber-400">{stats.totalEpsWatched}</span>
+
+          {/* Card: Progress */}
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-secondary/35 border border-white/5 shadow-sm min-w-[115px] shrink-0 sm:min-w-0 sm:flex-initial">
+            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+              <Play className="w-3.5 h-3.5 fill-current" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider">Progress</span>
+              <span className="text-sm font-extrabold text-amber-400 leading-tight">{stats.totalEpsWatched}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -213,16 +265,16 @@ export default function Watchlist() {
       </div>
 
       {/* Search & Sort Controls */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+      <div className="flex items-center gap-2.5 w-full">
         {/* Local Search */}
-        <div className="relative flex-1 max-w-md group">
+        <div className="relative flex-1 group">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search saved titles..."
-            className="w-full h-10 pl-10 pr-10 rounded-xl glass border border-border/60 hover:border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/70"
+            className="w-full h-10 pl-10 pr-10 rounded-xl bg-secondary/35 border border-white/5 hover:border-white/10 text-xs sm:text-sm text-foreground outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-muted-foreground/50 shadow-sm"
           />
           {searchQuery && (
             <button
@@ -238,7 +290,7 @@ export default function Watchlist() {
         </div>
 
         {/* Sort selector */}
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="shrink-0">
           <CustomSelect
             options={WATCHLIST_SORT_OPTIONS}
             value={sortBy}
@@ -268,21 +320,21 @@ export default function Watchlist() {
           <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-4">
             <Compass className="w-8 h-8" />
           </div>
-          <h2 className="text-xl md:text-2xl font-display font-bold">
-            {watchlist.length === 0 ? "Your watchlist is empty" : "No anime found"}
+          <h2 className="text-xl md:text-2xl font-display font-bold capitalize">
+            {categoryWatchlist.length === 0 ? `Your ${activeMediaType} watchlist is empty` : `No ${activeMediaType} titles found`}
           </h2>
           <p className="text-muted-foreground max-w-md text-sm mt-2">
-            {watchlist.length === 0
-              ? "Start building your personal collection by saving your favorite anime series!"
+            {categoryWatchlist.length === 0
+              ? `Start building your personal collection by saving your favorite ${activeMediaType} titles!`
               : "No titles match your current tab or search query."}
           </p>
-          {watchlist.length === 0 ? (
+          {categoryWatchlist.length === 0 ? (
             <Link
               to="/discover"
-              className="mt-6 px-6 py-3 rounded-xl bg-primary text-white font-semibold flex items-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors"
+              className="mt-6 px-6 py-3 rounded-xl bg-primary text-white font-semibold flex items-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors capitalize"
             >
               <Compass className="w-4 h-4" />
-              Explore Popular Anime
+              Explore Popular {activeMediaType}
             </Link>
           ) : (
             <div className="flex items-center gap-3 mt-6">
@@ -340,6 +392,10 @@ function WatchlistCard({
     Dropped: "border-l-4 border-l-rose-400",
   }[item.status] || "";
 
+  const mediaType = item.mediaType || inferMediaType(item.id, item.type);
+  const detailPath = mediaType === "movie" ? `/movie/${item.id}` : mediaType === "tv" ? `/tv/${item.id}` : `/anime/${item.id}`;
+  const watchPath = mediaType === "movie" ? `/watch/movie/${item.id}` : mediaType === "tv" ? `/watch/tv/${item.id}/1/1` : `/watch/${item.id}/${watchTargetEp}`;
+
   return (
     <div
       className={cn(
@@ -349,7 +405,7 @@ function WatchlistCard({
     >
       {/* Cover image & Link */}
       <Link
-        to={`/anime/${item.id}`}
+        to={detailPath}
         className="relative w-24 sm:w-28 md:w-32 aspect-[2/3] rounded-xl overflow-hidden shrink-0 bg-secondary active:scale-95 transition-transform touch-manipulation group/img shadow-md"
       >
         <img
@@ -377,7 +433,7 @@ function WatchlistCard({
           <div className="flex items-start justify-between gap-2">
             <div className="flex flex-col min-w-0">
               <Link
-                to={`/anime/${item.id}`}
+                to={detailPath}
                 className="font-semibold text-sm sm:text-base line-clamp-2 hover:text-primary active:text-primary transition-colors leading-snug"
                 title={item.title}
               >
@@ -477,10 +533,10 @@ function WatchlistCard({
 
             {/* Watch Episode Link */}
             <Link
-              to={`/watch/${item.id}/${watchTargetEp}`}
+              to={watchPath}
               className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 active:scale-90 transition-all shrink-0 touch-manipulation shadow-md shadow-primary/20"
-              title={`Watch Episode ${watchTargetEp}`}
-              aria-label={`Watch Episode ${watchTargetEp}`}
+              title={`Watch ${item.title}`}
+              aria-label={`Watch ${item.title}`}
             >
               <Play className="w-3.5 h-3.5 fill-current translate-x-0.5" />
             </Link>

@@ -111,23 +111,31 @@ export function mapJikanToMal(item: any): MalAnime {
 }
 
 async function safeFetchJson(url: string, retries = 2, delayMs = 350): Promise<any> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  const isLocalProxy = url.startsWith(BASE_URL) || url.startsWith("/api/mal");
+  const maxAttempts = isLocalProxy ? 1 : retries + 1;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
     try {
       const headers: Record<string, string> = {};
-      if (url.startsWith(BASE_URL) || url.startsWith("/api/mal") || url.includes("api.myanimelist.net")) {
+      if (isLocalProxy || url.includes("api.myanimelist.net")) {
         headers["X-MAL-CLIENT-ID"] = "6114d00ca681b7701d1e15fe11a4987e";
       }
 
       const res = await fetch(url, {
         headers: Object.keys(headers).length > 0 ? headers : undefined,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
-      if (res.status === 429 && attempt < retries) {
+      if (res.status === 429 && attempt < maxAttempts - 1) {
         await new Promise((r) => setTimeout(r, (attempt + 1) * 800));
         continue;
       }
       if (!res.ok) {
-        if (attempt < retries) {
+        if (attempt < maxAttempts - 1) {
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
@@ -135,7 +143,7 @@ async function safeFetchJson(url: string, retries = 2, delayMs = 350): Promise<a
       }
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        if (attempt < retries) {
+        if (attempt < maxAttempts - 1) {
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
@@ -143,7 +151,8 @@ async function safeFetchJson(url: string, retries = 2, delayMs = 350): Promise<a
       }
       return await res.json();
     } catch {
-      if (attempt < retries) {
+      clearTimeout(timeoutId);
+      if (attempt < maxAttempts - 1) {
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
@@ -162,6 +171,30 @@ async function queuedJikanFetch(url: string, retries = 2, delayMs = 500): Promis
   });
   jikanQueue = currentTask.catch(() => {});
   return currentTask;
+}
+
+export function inferAnimeRating(item: { rating?: string; isAdult?: boolean; genres?: any[]; format?: string; media_type?: string }): string {
+  if (item.rating && typeof item.rating === "string" && item.rating.trim()) {
+    return item.rating;
+  }
+  if (item.isAdult) {
+    return "18+";
+  }
+  const genres = (item.genres || []).map((g) => (typeof g === "string" ? g : g?.name || "").toLowerCase());
+  if (genres.includes("hentai") || genres.includes("erotica")) {
+    return "18+";
+  }
+  if (genres.includes("ecchi") || genres.includes("horror") || genres.includes("thriller")) {
+    return "R-17+";
+  }
+  if (genres.includes("kids")) {
+    return "PG";
+  }
+  const fmt = (item.format || item.media_type || "").toUpperCase();
+  if (fmt === "MOVIE") {
+    return "PG-13";
+  }
+  return "TV-14";
 }
 
 export async function fetchAniListRanking(type: string, page = 1, perPage = 20): Promise<MalAnime[]> {
@@ -227,39 +260,50 @@ export async function fetchAniListRanking(type: string, page = 1, perPage = 20):
           episodes
           genres
           status
+          isAdult
         }
       }
     }
   `;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4500);
 
   try {
     const res = await fetch("https://graphql.anilist.co", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ query, variables: { page, perPage, sort, status, format } }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     if (!res.ok) return [];
     const json = await res.json();
     const media = json?.data?.Page?.media;
     if (!media || !Array.isArray(media)) return [];
 
-    return media.map((item: any) => ({
-      id: item.idMal || item.id,
-      title: item.title?.english || item.title?.romaji || item.title?.native || "",
-      main_picture: {
-        medium: item.coverImage?.medium || item.coverImage?.large || "",
-        large: item.coverImage?.extraLarge || item.coverImage?.large || item.coverImage?.medium || "",
-      },
-      alternative_titles: {
-        en: item.title?.english || "",
-        ja: item.title?.romaji || item.title?.native || "",
-      },
-      mean: item.meanScore ? Number((item.meanScore / 10).toFixed(2)) : undefined,
-      num_episodes: item.episodes || undefined,
-      genres: item.genres?.map((g: string, idx: number) => ({ id: idx + 1, name: g })) || [],
-      media_type: item.format ? item.format.toLowerCase() : "tv",
-      status: item.status || "",
-    }));
+    return media.map((item: any) => {
+      const genres = item.genres?.map((g: string, idx: number) => ({ id: idx + 1, name: g })) || [];
+      const rating = inferAnimeRating({ isAdult: item.isAdult, genres, format: item.format });
+      return {
+        id: item.idMal || item.id,
+        title: item.title?.english || item.title?.romaji || item.title?.native || "",
+        main_picture: {
+          medium: item.coverImage?.medium || item.coverImage?.large || "",
+          large: item.coverImage?.extraLarge || item.coverImage?.large || item.coverImage?.medium || "",
+        },
+        alternative_titles: {
+          en: item.title?.english || "",
+          ja: item.title?.romaji || item.title?.native || "",
+        },
+        mean: item.meanScore ? Number((item.meanScore / 10).toFixed(2)) : undefined,
+        num_episodes: item.episodes || undefined,
+        genres,
+        media_type: item.format ? item.format.toLowerCase() : "tv",
+        status: item.status || "",
+        rating,
+      };
+    });
   } catch (err) {
     console.error("AniList ranking fetch error:", err);
     return [];
@@ -314,6 +358,7 @@ export async function fetchAniListSearch(queryStr: string, page = 1, perPage = 2
           episodes
           genres
           status
+          isAdult
         }
       }
     }
@@ -329,23 +374,28 @@ export async function fetchAniListSearch(queryStr: string, page = 1, perPage = 2
     const media = json?.data?.Page?.media;
     if (!media || !Array.isArray(media)) return [];
 
-    return media.map((item: any) => ({
-      id: item.idMal || item.id,
-      title: item.title?.english || item.title?.romaji || item.title?.native || "",
-      main_picture: {
-        medium: item.coverImage?.medium || item.coverImage?.large || "",
-        large: item.coverImage?.extraLarge || item.coverImage?.large || item.coverImage?.medium || "",
-      },
-      alternative_titles: {
-        en: item.title?.english || "",
-        ja: item.title?.romaji || item.title?.native || "",
-      },
-      mean: item.meanScore ? Number((item.meanScore / 10).toFixed(2)) : undefined,
-      num_episodes: item.episodes || undefined,
-      genres: item.genres?.map((g: string, idx: number) => ({ id: idx + 1, name: g })) || [],
-      media_type: item.format ? item.format.toLowerCase() : "tv",
-      status: item.status || "",
-    }));
+    return media.map((item: any) => {
+      const genres = item.genres?.map((g: string, idx: number) => ({ id: idx + 1, name: g })) || [];
+      const rating = inferAnimeRating({ isAdult: item.isAdult, genres, format: item.format });
+      return {
+        id: item.idMal || item.id,
+        title: item.title?.english || item.title?.romaji || item.title?.native || "",
+        main_picture: {
+          medium: item.coverImage?.medium || item.coverImage?.large || "",
+          large: item.coverImage?.extraLarge || item.coverImage?.large || item.coverImage?.medium || "",
+        },
+        alternative_titles: {
+          en: item.title?.english || "",
+          ja: item.title?.romaji || item.title?.native || "",
+        },
+        mean: item.meanScore ? Number((item.meanScore / 10).toFixed(2)) : undefined,
+        num_episodes: item.episodes || undefined,
+        genres,
+        media_type: item.format ? item.format.toLowerCase() : "tv",
+        status: item.status || "",
+        rating,
+      };
+    });
   } catch (err) {
     console.error("AniList search error:", err);
     return [];
@@ -749,6 +799,7 @@ export async function fetchAniListByGenre(genreName: string, page = 1, perPage =
           episodes
           genres
           status
+          isAdult
         }
       }
     }
@@ -764,23 +815,28 @@ export async function fetchAniListByGenre(genreName: string, page = 1, perPage =
     const media = json?.data?.Page?.media;
     if (!media || !Array.isArray(media)) return [];
 
-    return media.map((item: any) => ({
-      id: item.idMal || item.id,
-      title: item.title?.english || item.title?.romaji || item.title?.native || "",
-      main_picture: {
-        medium: item.coverImage?.medium || item.coverImage?.large || "",
-        large: item.coverImage?.extraLarge || item.coverImage?.large || item.coverImage?.medium || "",
-      },
-      alternative_titles: {
-        en: item.title?.english || "",
-        ja: item.title?.romaji || item.title?.native || "",
-      },
-      mean: item.meanScore ? Number((item.meanScore / 10).toFixed(2)) : undefined,
-      num_episodes: item.episodes || undefined,
-      genres: item.genres?.map((g: string, idx: number) => ({ id: idx + 1, name: g })) || [],
-      media_type: item.format ? item.format.toLowerCase() : "tv",
-      status: item.status || "",
-    }));
+    return media.map((item: any) => {
+      const genres = item.genres?.map((g: string, idx: number) => ({ id: idx + 1, name: g })) || [];
+      const rating = inferAnimeRating({ isAdult: item.isAdult, genres, format: item.format });
+      return {
+        id: item.idMal || item.id,
+        title: item.title?.english || item.title?.romaji || item.title?.native || "",
+        main_picture: {
+          medium: item.coverImage?.medium || item.coverImage?.large || "",
+          large: item.coverImage?.extraLarge || item.coverImage?.large || item.coverImage?.medium || "",
+        },
+        alternative_titles: {
+          en: item.title?.english || "",
+          ja: item.title?.romaji || item.title?.native || "",
+        },
+        mean: item.meanScore ? Number((item.meanScore / 10).toFixed(2)) : undefined,
+        num_episodes: item.episodes || undefined,
+        genres,
+        media_type: item.format ? item.format.toLowerCase() : "tv",
+        status: item.status || "",
+        rating,
+      };
+    });
   } catch (err) {
     console.error("AniList fetch error:", err);
     return [];

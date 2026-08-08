@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           },
           configure: (proxy) => {
-            proxy.on('error', (err, _req, res) => {
+            proxy.on('error', (err, _req, res: any) => {
               if (res && !res.headersSent) {
                 res.writeHead(502, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Proxy Error', message: err.message }));
@@ -57,7 +57,20 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/anikoto/, ''),
           configure: (proxy) => {
-            proxy.on('error', (err, _req, res) => {
+            proxy.on('error', (err, _req, res: any) => {
+              if (res && !res.headersSent) {
+                res.writeHead(502, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Proxy Error', message: err.message }));
+              }
+            });
+          }
+        },
+        '/api/tmdb': {
+          target: 'https://api.themoviedb.org/3',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/tmdb/, ''),
+          configure: (proxy) => {
+            proxy.on('error', (err, _req, res: any) => {
               if (res && !res.headersSent) {
                 res.writeHead(502, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Proxy Error', message: err.message }));
@@ -113,7 +126,7 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
     return html.replace(`<!-- ${slotName} -->`, content)
   }
 
-  const title = config.title ?? "openAnime"
+  const title = config.title ?? "openScreen"
   const description = config.description ?? ''
   const favicon = config.icons?.icon ?? ''
   const socialImage = config.openGraph?.image ?? ''

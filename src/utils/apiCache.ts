@@ -9,7 +9,7 @@ interface CacheEntry<T> {
 const memoryCache = new Map<string, CacheEntry<any>>();
 const inFlightPromises = new Map<string, Promise<any>>();
 
-const STORAGE_PREFIX = "openAnime_cache_";
+const STORAGE_PREFIX = "openScreen_cache_";
 
 function getSessionItem<T>(key: string): T | null {
   try {

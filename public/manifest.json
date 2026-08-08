@@ -1,7 +1,7 @@
 {
-  "name": "openAnime - Anime Streaming & Tracker",
-  "short_name": "openAnime",
-  "description": "Watch, discover, and track your favorite anime seamlessly.",
+  "name": "openScreen - Streaming & Tracker",
+  "short_name": "openScreen",
+  "description": "Watch, discover, and track your favorite media seamlessly.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#09090b",

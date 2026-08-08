@@ -1,13 +1,22 @@
-import { Outlet, useLocation } from "react-router";
+import { Outlet, useLocation, useNavigate } from "react-router";
 import { useEffect, useRef } from "react";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import BottomNav from "./BottomNav";
+import { useMediaType } from "../../context/MediaTypeContext";
 
 export default function RootLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
+  const { hasChosenCategory } = useMediaType();
   const isVideoPlayer = location.pathname.startsWith('/watch/');
+
+  useEffect(() => {
+    if (!hasChosenCategory) {
+      navigate("/select", { replace: true });
+    }
+  }, [hasChosenCategory, navigate]);
 
   useEffect(() => {
     if (mainRef.current) {
@@ -15,6 +24,10 @@ export default function RootLayout() {
     }
     window.scrollTo(0, 0);
   }, [location.pathname]);
+
+  if (!hasChosenCategory) {
+    return <div className="min-h-screen bg-[#09090b]" />;
+  }
 
   if (isVideoPlayer) {
     return <Outlet />;
@@ -40,3 +53,4 @@ export default function RootLayout() {
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
 {
-  "name": "openAnime",
-  "description": "Imported from GitHub: rudrarathod/openAnime",
+  "name": "Copy of Remix openScreen",
+  "description": "Imported from GitHub: rudrarathod/openScreen",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

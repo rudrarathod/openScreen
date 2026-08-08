@@ -24,7 +24,7 @@ export default function VideoPlayer() {
   // Auto-play next episode toggle state
   const [autoPlayNext, setAutoPlayNext] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem("openAnime_autoplay_next");
+      const saved = localStorage.getItem("openScreen_autoplay_next");
       return saved !== null ? JSON.parse(saved) : true;
     } catch (e) {
       return true;
@@ -36,7 +36,7 @@ export default function VideoPlayer() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("openAnime_autoplay_next", JSON.stringify(autoPlayNext));
+      localStorage.setItem("openScreen_autoplay_next", JSON.stringify(autoPlayNext));
     } catch (e) {
       console.error(e);
     }
@@ -148,23 +148,32 @@ export default function VideoPlayer() {
   // Handle iframe message events (player finished)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      let eventData = event.data;
-      if (typeof eventData === "string") {
-        try {
-          eventData = JSON.parse(eventData);
-        } catch (e) {
-          return;
+      try {
+        let eventData = event.data;
+        if (!eventData) return;
+
+        if (typeof eventData === "string") {
+          try {
+            eventData = JSON.parse(eventData);
+          } catch (e) {
+            return;
+          }
         }
-      }
-      if (
-        eventData.event === "complete" ||
-        eventData.event === "ended" ||
-        eventData.event === "finish" ||
-        (eventData.channel === "megacloud" && eventData.event === "ended")
-      ) {
-        if (autoPlayNext && nextEp) {
-          setCountdown(5);
+
+        if (
+          eventData &&
+          typeof eventData === "object" &&
+          (eventData.event === "complete" ||
+            eventData.event === "ended" ||
+            eventData.event === "finish" ||
+            (eventData.channel === "megacloud" && eventData.event === "ended"))
+        ) {
+          if (autoPlayNext && nextEp) {
+            setCountdown(5);
+          }
         }
+      } catch (err) {
+        // Silently ignore cross-origin postMessage structure errors
       }
     };
     window.addEventListener("message", handleMessage);
@@ -436,8 +445,7 @@ export default function VideoPlayer() {
               key={`${epId}-${streamType}`} // Forces iframe reload when episode or audio type changes
               src={getEmbedUrl()} 
               className="w-full h-full border-0"
-              frameBorder="0" 
-              scrolling="no" 
+              style={{ width: "100%", height: "100%", border: "none" }}
               allowFullScreen 
               allow="autoplay; fullscreen; picture-in-picture"
               referrerPolicy="origin"

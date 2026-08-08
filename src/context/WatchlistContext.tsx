@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 
 export type WatchlistStatus = "Watching" | "Plan to Watch" | "Completed" | "On Hold" | "Dropped";
 
+export type MediaTypeCategory = "anime" | "movie" | "tv";
+
 export interface WatchlistItem {
   id: string | number;
   title: string;
@@ -9,11 +11,24 @@ export interface WatchlistItem {
   image: string;
   score?: number | string;
   type?: string;
+  mediaType?: MediaTypeCategory;
   status: WatchlistStatus;
   addedAt: number;
   progressEp?: number;
   totalEps?: number;
   genres?: string[];
+}
+
+export function inferMediaType(id: string | number, type?: string, explicitMediaType?: string): MediaTypeCategory {
+  if (explicitMediaType === "anime" || explicitMediaType === "movie" || explicitMediaType === "tv") {
+    return explicitMediaType;
+  }
+  const idStr = String(id);
+  if (idStr.startsWith("movie-")) return "movie";
+  if (idStr.startsWith("tv-")) return "tv";
+  if (type === "Movie" && !/^\d+$/.test(idStr)) return "movie";
+  if (type === "TV" && !/^\d+$/.test(idStr)) return "tv";
+  return "anime";
 }
 
 interface WatchlistContextType {
@@ -25,6 +40,7 @@ interface WatchlistContextType {
     image: string;
     score?: number | string;
     type?: string;
+    mediaType?: MediaTypeCategory;
     status?: WatchlistStatus;
     totalEps?: number;
     progressEp?: number;
@@ -40,6 +56,7 @@ interface WatchlistContextType {
     image: string;
     score?: number | string;
     type?: string;
+    mediaType?: MediaTypeCategory;
     epNumber: number;
     totalEps?: number;
   }) => void;
@@ -49,7 +66,7 @@ interface WatchlistContextType {
   clearWatchlist: () => void;
 }
 
-const STORAGE_KEY = "openAnime_watchlist_v2";
+const STORAGE_KEY = "openScreen_watchlist_v2";
 
 const WatchlistContext = createContext<WatchlistContextType | undefined>(undefined);
 
@@ -81,6 +98,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
     image: string;
     score?: number | string;
     type?: string;
+    mediaType?: MediaTypeCategory;
     status?: WatchlistStatus;
     totalEps?: number;
     progressEp?: number;
@@ -104,6 +122,8 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
         finalStatus = "Watching";
       }
 
+      const mediaType = inferMediaType(item.id, item.type, item.mediaType);
+
       if (existing) {
         return prev.map((i) =>
           String(i.id) === String(item.id)
@@ -111,6 +131,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
                 ...i,
                 title: item.title || i.title,
                 subtitle: item.subtitle || i.subtitle,
+                mediaType: mediaType || i.mediaType,
                 status: finalStatus,
                 progressEp: initialProgress,
                 totalEps: totalEps || i.totalEps,
@@ -127,6 +148,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
         image: item.image,
         score: item.score,
         type: item.type,
+        mediaType: mediaType,
         status: finalStatus,
         addedAt: Date.now(),
         progressEp: initialProgress,
@@ -186,9 +208,11 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
   const syncWatchlistProgress = useCallback((item: {
     id: string | number;
     title: string;
+    subtitle?: string;
     image: string;
     score?: number | string;
     type?: string;
+    mediaType?: MediaTypeCategory;
     epNumber: number;
     totalEps?: number;
   }) => {
@@ -196,6 +220,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
       const existing = prev.find((i) => String(i.id) === String(item.id));
       const totalEps = Math.max(item.totalEps || 0, existing?.totalEps || 0);
       const epNumber = Math.max(1, item.epNumber);
+      const mediaType = inferMediaType(item.id, item.type, item.mediaType);
 
       if (existing) {
         const newProgress = Math.max(existing.progressEp || 0, epNumber);
@@ -216,6 +241,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
                 ...i,
                 title: item.title || i.title,
                 subtitle: item.subtitle || i.subtitle,
+                mediaType: mediaType || i.mediaType,
                 progressEp: newProgress,
                 status: newStatus,
                 totalEps: totalEps || i.totalEps,
@@ -233,6 +259,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
         image: item.image,
         score: item.score,
         type: item.type,
+        mediaType: mediaType,
         status: initialStatus,
         addedAt: Date.now(),
         progressEp: epNumber,

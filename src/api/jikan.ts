@@ -14,25 +14,34 @@ export interface JikanEpisode {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function fetchJsonWithRetry(url: string, maxRetries = 3): Promise<any> {
+async function fetchJsonWithRetry(url: string, maxRetries = 2): Promise<any> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (res.status === 429) {
-        await delay(500 * (attempt + 1));
+        await delay(400 * (attempt + 1));
         continue;
       }
       if (!res.ok) return null;
       return await res.json();
     } catch (e) {
+      clearTimeout(timeoutId);
       if (attempt === maxRetries - 1) return null;
-      await delay(400);
+      await delay(300);
     }
   }
   return null;
 }
 
 async function fetchAniListEpisodeCount(malId: string | number): Promise<number | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3500);
+
   try {
     const query = `
       query ($idMal: Int) {
@@ -48,7 +57,9 @@ async function fetchAniListEpisodeCount(malId: string | number): Promise<number 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables: { idMal: Number(malId) } }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     if (!res.ok) return null;
     const json = await res.json();
     const media = json.data?.Media;
