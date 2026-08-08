@@ -10,7 +10,7 @@ export function usePwaInstall() {
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // Check if app is already running in standalone mode (PWA installed)
+    // Check if app is already running in standalone mode
     const isStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       (navigator as any).standalone === true;
@@ -20,7 +20,6 @@ export function usePwaInstall() {
     }
 
     function handleBeforeInstallPrompt(e: Event) {
-      // Prevent browser default mini-infobar
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     }
