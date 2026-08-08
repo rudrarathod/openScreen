@@ -53,19 +53,21 @@ window.addEventListener('unhandledrejection', (event) => {
 
 // Register Service Worker for PWA functionality (works offline & fallback during host downtime)
 if ('serviceWorker' in navigator) {
-  try {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then((reg) => {
-          console.log('Service Worker registered successfully:', reg.scope);
-        })
-        .catch((err) => {
-          console.error('Service Worker registration failed:', err);
-        });
-    });
-  } catch (e) {
-    console.error('Service Worker setup error:', e);
+  const registerSW = () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        console.log('Service Worker registered successfully:', reg.scope);
+      })
+      .catch((err) => {
+        console.error('Service Worker registration failed:', err);
+      });
+  };
+
+  if (document.readyState === 'complete') {
+    registerSW();
+  } else {
+    window.addEventListener('load', registerSW);
   }
 }
 
