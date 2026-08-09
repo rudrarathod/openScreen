@@ -16,23 +16,26 @@ export const STREAMING_SERVERS: ServerOption[] = [
   { id: "vidlink", name: "VidLink", baseUrl: "https://vidlink.pro" },
 ];
 
-export function getMovieEmbedUrl(serverId: ServerId, tmdbId: string): string {
+export function getMovieEmbedUrl(serverId: ServerId, tmdbId: string, startAt?: number): string {
   if (serverId === "vidsrc") {
     return `https://vidsrc.fyi/embed/movie/${tmdbId}`;
   }
-  return `https://vidlink.pro/movie/${tmdbId}?primaryColor=8b5cf6&secondaryColor=18181b&iconColor=8b5cf6&autoplay=false`;
+  const baseUrl = `https://vidlink.pro/movie/${tmdbId}?primaryColor=8b5cf6&secondaryColor=18181b&iconColor=8b5cf6&autoplay=false&player=jw`;
+  return startAt && startAt > 0 ? `${baseUrl}&startAt=${startAt}` : baseUrl;
 }
 
 export function getTvEmbedUrl(
   serverId: ServerId,
   tmdbId: string,
   season: number | string,
-  episode: number | string
+  episode: number | string,
+  startAt?: number
 ): string {
   if (serverId === "vidsrc") {
     return `https://vidsrc.fyi/embed/tv/${tmdbId}/${season}/${episode}`;
   }
-  return `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}?primaryColor=8b5cf6&secondaryColor=18181b&iconColor=8b5cf6&autoplay=false&nextbutton=true`;
+  const baseUrl = `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}?primaryColor=8b5cf6&secondaryColor=18181b&iconColor=8b5cf6&autoplay=false&nextbutton=true&player=jw`;
+  return startAt && startAt > 0 ? `${baseUrl}&startAt=${startAt}` : baseUrl;
 }
 
 interface ServerSelectorProps {

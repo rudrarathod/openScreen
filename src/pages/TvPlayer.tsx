@@ -37,11 +37,12 @@ export default function TvPlayer() {
   const [countdown, setCountdown] = useState<number | null>(null);
 
   // Server selection state
-  const [currentServer, setCurrentServer] = useState<ServerId>("vidsrc");
+  const [currentServer, setCurrentServer] = useState<ServerId>("vidlink");
   const [failedServers, setFailedServers] = useState<ServerId[]>([]);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const [bothFailed, setBothFailed] = useState(false);
-  const [iframeLoading, setIframeLoading] = useState(true);
+  const [iframeLoading, setIframeLoading] = useState<boolean>(true);
+  const [startAt, setStartAt] = useState<number>(0);
 
   const { syncWatchlistProgress } = useWatchlist();
   const { saveContinueWatching } = useContinueWatching();
@@ -49,6 +50,37 @@ export default function TvPlayer() {
 
   const currentSeason = parseInt(season || "1", 10) || 1;
   const currentEpisode = parseInt(episode || "1", 10) || 1;
+
+  // Load progress once on mount/episode change
+  useEffect(() => {
+    if (!id) return;
+    try {
+      const saved = localStorage.getItem(`vidlink_tv_${id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const tvData = parsed[id] || parsed;
+        const episodeKey = `s${currentSeason}e${currentEpisode}`;
+        const episodeProgress = tvData?.show_progress?.[episodeKey]?.progress;
+        
+        if (episodeProgress && typeof episodeProgress.watched === "number") {
+          const watched = episodeProgress.watched;
+          const duration = episodeProgress.duration || 0;
+          if (duration > 0 && (watched / duration) >= 0.95) {
+            setStartAt(0);
+          } else {
+            setStartAt(Math.floor(watched));
+          }
+        } else {
+          setStartAt(0);
+        }
+      } else {
+        setStartAt(0);
+      }
+    } catch (e) {
+      console.error("Failed to parse tv progress", e);
+      setStartAt(0);
+    }
+  }, [id, currentSeason, currentEpisode]);
 
   useEffect(() => {
     try {
@@ -167,6 +199,14 @@ export default function TvPlayer() {
           }
         }
 
+        // Save progress if type is MEDIA_DATA
+        if (eventData.type === "MEDIA_DATA" && id) {
+          const mediaData = eventData.data;
+          if (mediaData) {
+            localStorage.setItem(`vidlink_tv_${id}`, JSON.stringify(mediaData));
+          }
+        }
+
         if (
           eventData &&
           typeof eventData === "object" &&
@@ -186,7 +226,48 @@ export default function TvPlayer() {
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [autoPlayNext, nextEp]);
+  }, [autoPlayNext, nextEp, id]);
+
+  // Listen for fullscreen events to lock orientation on mobile
+  useEffect(() => {
+    const handleFullscreenChange = async () => {
+      const isFullscreen =
+        document.fullscreenElement !== null ||
+        (document as any).webkitFullscreenElement !== null ||
+        (document as any).mozFullScreenElement !== null ||
+        (document as any).msFullscreenElement !== null;
+
+      if (isFullscreen) {
+        if (screen.orientation && typeof screen.orientation.lock === "function") {
+          try {
+            await screen.orientation.lock("landscape");
+          } catch (err) {
+            console.warn("Failed to lock orientation to landscape:", err);
+          }
+        }
+      } else {
+        if (screen.orientation && typeof screen.orientation.unlock === "function") {
+          try {
+            screen.orientation.unlock();
+          } catch (err) {
+            console.warn("Failed to unlock orientation:", err);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, []);
 
   const handleServerFailure = useCallback((serverToFail: ServerId) => {
     setFailedServers((prev) => {
@@ -252,7 +333,7 @@ export default function TvPlayer() {
     return <div className="p-12 text-center text-muted-foreground">Invalid TV Series ID</div>;
   }
 
-  const embedUrl = getTvEmbedUrl(currentServer, id, currentSeason, currentEpisode);
+  const embedUrl = getTvEmbedUrl(currentServer, id, currentSeason, currentEpisode, startAt);
 
   // Episode Render Function for Sidebar and Mobile
   const renderEpisodesList = () => {
@@ -413,7 +494,7 @@ export default function TvPlayer() {
                   title={tv?.name || "TV Player"}
                   className="w-full h-full border-0"
                   style={{ width: "100%", height: "100%", border: "none" }}
-                  allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                  allow="autoplay; fullscreen; picture-in-picture; encrypted-media; orientation-lock"
                   allowFullScreen
                   onLoad={handleIframeLoad}
                   onError={handleIframeError}

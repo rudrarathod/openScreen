@@ -180,6 +180,47 @@ export default function VideoPlayer() {
     return () => window.removeEventListener("message", handleMessage);
   }, [autoPlayNext, nextEp]);
 
+  // Listen for fullscreen events to lock orientation on mobile
+  useEffect(() => {
+    const handleFullscreenChange = async () => {
+      const isFullscreen =
+        document.fullscreenElement !== null ||
+        (document as any).webkitFullscreenElement !== null ||
+        (document as any).mozFullScreenElement !== null ||
+        (document as any).msFullscreenElement !== null;
+
+      if (isFullscreen) {
+        if (screen.orientation && typeof screen.orientation.lock === "function") {
+          try {
+            await screen.orientation.lock("landscape");
+          } catch (err) {
+            console.warn("Failed to lock orientation to landscape:", err);
+          }
+        }
+      } else {
+        if (screen.orientation && typeof screen.orientation.unlock === "function") {
+          try {
+            screen.orientation.unlock();
+          } catch (err) {
+            console.warn("Failed to unlock orientation:", err);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, []);
+
   const { saveContinueWatching, isEpisodeWatched, getEpisodeProgress } = useContinueWatching();
   const { syncWatchlistProgress } = useWatchlist();
 
@@ -447,7 +488,7 @@ export default function VideoPlayer() {
               className="w-full h-full border-0"
               style={{ width: "100%", height: "100%", border: "none" }}
               allowFullScreen 
-              allow="autoplay; fullscreen; picture-in-picture"
+              allow="autoplay; fullscreen; picture-in-picture; orientation-lock"
               referrerPolicy="origin"
             />
 

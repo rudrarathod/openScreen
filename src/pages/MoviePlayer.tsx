@@ -17,15 +17,43 @@ export default function MoviePlayer() {
   const [isDescExpanded, setIsDescExpanded] = useState(false);
 
   // Server selection state
-  const [currentServer, setCurrentServer] = useState<ServerId>("vidsrc");
+  const [currentServer, setCurrentServer] = useState<ServerId>("vidlink");
   const [failedServers, setFailedServers] = useState<ServerId[]>([]);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const [bothFailed, setBothFailed] = useState(false);
   const [iframeLoading, setIframeLoading] = useState(true);
+  const [startAt, setStartAt] = useState<number>(0);
 
   const { syncWatchlistProgress } = useWatchlist();
   const { saveContinueWatching } = useContinueWatching();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load progress once on mount/id change
+  useEffect(() => {
+    if (!id) return;
+    try {
+      const saved = localStorage.getItem(`vidlink_movie_${id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const movieData = parsed[id] || parsed;
+        const progress = movieData?.progress;
+        if (progress && typeof progress.watched === "number") {
+          const watched = progress.watched;
+          const duration = progress.duration || 0;
+          if (duration > 0 && (watched / duration) >= 0.95) {
+            setStartAt(0);
+          } else {
+            setStartAt(Math.floor(watched));
+          }
+        }
+      } else {
+        setStartAt(0);
+      }
+    } catch (e) {
+      console.error("Failed to parse movie progress", e);
+      setStartAt(0);
+    }
+  }, [id]);
 
   useEffect(() => {
     async function loadMovie() {
@@ -89,6 +117,47 @@ export default function MoviePlayer() {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [id]);
+
+  // Listen for fullscreen events to lock orientation on mobile
+  useEffect(() => {
+    const handleFullscreenChange = async () => {
+      const isFullscreen =
+        document.fullscreenElement !== null ||
+        (document as any).webkitFullscreenElement !== null ||
+        (document as any).mozFullScreenElement !== null ||
+        (document as any).msFullscreenElement !== null;
+
+      if (isFullscreen) {
+        if (screen.orientation && typeof screen.orientation.lock === "function") {
+          try {
+            await screen.orientation.lock("landscape");
+          } catch (err) {
+            console.warn("Failed to lock orientation to landscape:", err);
+          }
+        }
+      } else {
+        if (screen.orientation && typeof screen.orientation.unlock === "function") {
+          try {
+            screen.orientation.unlock();
+          } catch (err) {
+            console.warn("Failed to unlock orientation:", err);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, []);
 
   const handleServerFailure = useCallback((serverToFail: ServerId) => {
     setFailedServers((prev) => {
@@ -154,7 +223,7 @@ export default function MoviePlayer() {
     return <div className="p-12 text-center text-muted-foreground">Invalid Movie ID</div>;
   }
 
-  const embedUrl = getMovieEmbedUrl(currentServer, id);
+  const embedUrl = getMovieEmbedUrl(currentServer, id, startAt);
 
   return (
     <div className="flex w-full min-h-screen bg-background text-foreground flex-col">
@@ -238,7 +307,7 @@ export default function MoviePlayer() {
                 title={movie?.title || "Movie Player"}
                 className="w-full h-full border-0"
                 style={{ width: "100%", height: "100%", border: "none" }}
-                allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                allow="autoplay; fullscreen; picture-in-picture; encrypted-media; orientation-lock"
                 allowFullScreen
                 onLoad={handleIframeLoad}
                 onError={handleIframeError}
