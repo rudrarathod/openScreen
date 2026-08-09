@@ -37,7 +37,7 @@ export default function TvPlayer() {
   const [countdown, setCountdown] = useState<number | null>(null);
 
   // Server selection state
-  const [currentServer, setCurrentServer] = useState<ServerId>("vidlink");
+  const [currentServer, setCurrentServer] = useState<ServerId>("vidsrc");
   const [failedServers, setFailedServers] = useState<ServerId[]>([]);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const [bothFailed, setBothFailed] = useState(false);

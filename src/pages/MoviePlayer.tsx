@@ -17,7 +17,7 @@ export default function MoviePlayer() {
   const [isDescExpanded, setIsDescExpanded] = useState(false);
 
   // Server selection state
-  const [currentServer, setCurrentServer] = useState<ServerId>("vidlink");
+  const [currentServer, setCurrentServer] = useState<ServerId>("vidsrc");
   const [failedServers, setFailedServers] = useState<ServerId[]>([]);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const [bothFailed, setBothFailed] = useState(false);
